@@ -1018,15 +1018,79 @@ app.get("/api/stats", (req, res) => {
 
 // Fetch customer name from SPL website
 let browserInstance = null;
+let pagePool = []; // Pool of pre-warmed pages
 
 async function getBrowser() {
   if (!browserInstance) {
     browserInstance = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-translate',
+        '--no-first-run',
+        '--disable-default-apps',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-client-side-phishing-detection',
+        '--disable-popup-blocking',
+        '--disable-component-update',
+        '--metrics-recording-only',
+        '--safebrowsing-disable-auto-update'
+      ]
     });
+    // Pre-warm a page
+    const warmPage = await browserInstance.newPage();
+    await setupPage(warmPage);
+    pagePool.push(warmPage);
   }
   return browserInstance;
+}
+
+async function setupPage(page) {
+  // Block images, CSS, fonts for faster loading
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    const resourceType = req.resourceType();
+    if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+}
+
+async function getPage() {
+  const browser = await getBrowser();
+  // Try to get a pre-warmed page from pool
+  if (pagePool.length > 0) {
+    return pagePool.pop();
+  }
+  // Create new page if pool is empty
+  const page = await browser.newPage();
+  await setupPage(page);
+  return page;
+}
+
+async function releasePage(page) {
+  try {
+    // Navigate to blank to clear state
+    await page.goto('about:blank', { timeout: 1000 }).catch(() => {});
+    // Return to pool (max 3 pages)
+    if (pagePool.length < 3) {
+      pagePool.push(page);
+    } else {
+      await page.close();
+    }
+  } catch (e) {
+    await page.close().catch(() => {});
+  }
 }
 
 app.post("/api/fetch-customer-name", async (req, res) => {
@@ -1035,16 +1099,13 @@ app.post("/api/fetch-customer-name", async (req, res) => {
   console.log('Fetching customer name:', { type, idNumber, unifiedNumber, establishmentNumber });
   
   try {
-    const browser = await getBrowser();
-    const page = await browser.newPage();
-    
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    const page = await getPage();
     
     if (type === 'individuals') {
-      // Navigate to individuals registration
+      // Navigate to individuals registration - use domcontentloaded for speed
       await page.goto('https://accounts.splonline.com.sa/ar/Registration/ValidateNId', {
-        waitUntil: 'networkidle2',
-        timeout: 30000
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
       });
       
       // Fill ID number
@@ -1066,9 +1127,9 @@ app.post("/api/fetch-customer-name", async (req, res) => {
       // Submit form
       await page.click('#btnValidate');
       
-      // Wait for response
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(2000);
+      // Wait for response - faster with domcontentloaded
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(500);
       
       // Try to get the name from the page
       const customerName = await page.evaluate(() => {
@@ -1087,7 +1148,7 @@ app.post("/api/fetch-customer-name", async (req, res) => {
         return null;
       });
       
-      await page.close();
+      releasePage(page);
       
       if (customerName) {
         res.json({ success: true, name: customerName });
@@ -1096,15 +1157,15 @@ app.post("/api/fetch-customer-name", async (req, res) => {
       }
       
     } else if (type === 'business') {
-      // Navigate to business registration
+      // Navigate to business registration - use domcontentloaded for speed
       await page.goto('https://accounts.splonline.com.sa/ar/Registration/RegisterCustomer', {
-        waitUntil: 'networkidle2',
-        timeout: 30000
+        waitUntil: 'domcontentloaded',
+        timeout: 15000
       });
       
       // Select business type
       await page.click('input[value="business"], #business, [data-type="business"]').catch(() => {});
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(300);
       
       // Fill business number based on type
       if (unifiedNumber) {
@@ -1121,8 +1182,8 @@ app.post("/api/fetch-customer-name", async (req, res) => {
       
       // Submit and get name
       await page.click('button[type="submit"], #btnValidate, .btn-primary').catch(() => {});
-      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(2000);
+      await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(500);
       
       const businessName = await page.evaluate(() => {
         const nameElement = document.querySelector('.business-name, .company-name, [data-name], h2, h3');
@@ -1134,7 +1195,7 @@ app.post("/api/fetch-customer-name", async (req, res) => {
         return null;
       });
       
-      await page.close();
+      releasePage(page);
       
       if (businessName) {
         res.json({ success: true, name: businessName });

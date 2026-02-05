@@ -70,13 +70,18 @@ export default function RegisterStep2() {
       if (result.success && result.name) {
         // Store customer name in localStorage for step3
         localStorage.setItem('customerName', result.name);
+        setIsLoading(false);
+        setLocation(`/register-step3?type=${accountType}`);
+      } else {
+        // Retry if failed
+        setIsLoading(false);
+        alert('لم نتمكن من جلب البيانات. يرجى المحاولة مرة أخرى.');
       }
     } catch (error) {
       console.error('Error fetching customer name:', error);
+      setIsLoading(false);
+      alert('حدث خطأ. يرجى المحاولة مرة أخرى.');
     }
-    
-    setIsLoading(false);
-    setLocation(`/register-step3?type=${accountType}`);
   };
 
   // Luhn algorithm to validate Saudi ID number
