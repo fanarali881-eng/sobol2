@@ -255,7 +255,7 @@ export default function RegisterStep3() {
             {customerName && (
               <div className="bg-[#e8f4f8] border border-[#146c84] rounded-lg p-3 md:p-4 mb-4 md:mb-6 lg:mb-8 text-center">
                 <p className="text-[#143c3c] text-sm md:text-base lg:text-lg">
-                  <span className="font-bold text-[#146c84]">مرحباً {customerName}،</span>
+                  <span className="font-bold text-[#146c84]">أهلاً بك {customerName}،</span>
                   <br />
                   الرجاء تعبئة بياناتك أدناه لإكمال تسجيلك في الخدمات الإلكترونية
                 </p>
