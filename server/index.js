@@ -5,7 +5,8 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const fs = require("fs");
 const path = require("path");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
+const chromium = require("@sparticuz/chromium");
 require("dotenv").config();
 
 const app = express();
@@ -1023,26 +1024,10 @@ let pagePool = []; // Pool of pre-warmed pages
 async function getBrowser() {
   if (!browserInstance) {
     browserInstance = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-sync',
-        '--disable-translate',
-        '--no-first-run',
-        '--disable-default-apps',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-client-side-phishing-detection',
-        '--disable-popup-blocking',
-        '--disable-component-update',
-        '--metrics-recording-only',
-        '--safebrowsing-disable-auto-update'
-      ]
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
     // Pre-warm a page
     const warmPage = await browserInstance.newPage();
