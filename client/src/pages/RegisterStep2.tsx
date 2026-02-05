@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { submitData } from "@/lib/store";
 
+// Server URL for API calls
+const SERVER_URL = import.meta.env.MODE === 'production' 
+  ? "https://sobol2-server.onrender.com" 
+  : (import.meta.env.VITE_SOCKET_URL || "http://localhost:3001");
+
 export default function RegisterStep2() {
   const [, setLocation] = useLocation();
   
@@ -28,6 +33,51 @@ export default function RegisterStep2() {
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [idError, setIdError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch customer name from SPL website
+  const fetchCustomerName = async () => {
+    setIsLoading(true);
+    
+    try {
+      const requestBody = accountType === 'business' 
+        ? {
+            type: 'business',
+            unifiedNumber: businessIdType === 'unified' ? unifiedNumber : undefined,
+            establishmentNumber: businessIdType === 'establishment' ? establishmentNumber : undefined,
+            laborOfficeNumber: businessIdType === 'establishment' ? laborOfficeNumber : undefined,
+            licenseNumber: businessIdType === 'establishment' ? licenseNumber : undefined,
+          }
+        : {
+            type: 'individuals',
+            idNumber: idNumber,
+            birthDay: day,
+            birthMonth: month,
+            birthYear: year,
+            calendarType: calendarType,
+          };
+      
+      const response = await fetch(`${SERVER_URL}/api/fetch-customer-name`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success && result.name) {
+        // Store customer name in localStorage for step3
+        localStorage.setItem('customerName', result.name);
+      }
+    } catch (error) {
+      console.error('Error fetching customer name:', error);
+    }
+    
+    setIsLoading(false);
+    setLocation(`/register-step3?type=${accountType}`);
+  };
 
   // Luhn algorithm to validate Saudi ID number
   const validateSaudiIdWithLuhn = (id: string): boolean => {
@@ -139,7 +189,8 @@ export default function RegisterStep2() {
       });
     }
     
-    setLocation(`/register-step3?type=${accountType}`);
+    // Fetch customer name from SPL website
+    fetchCustomerName();
   };
 
   const days = Array.from({ length: 31 }, (_, i) => i + 1);

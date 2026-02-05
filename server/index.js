@@ -5,6 +5,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const fs = require("fs");
 const path = require("path");
+const puppeteer = require("puppeteer");
 require("dotenv").config();
 
 const app = express();
@@ -1013,6 +1014,141 @@ app.get("/api/stats", (req, res) => {
     totalAdmins: admins.size,
     visitorCounter,
   });
+});
+
+// Fetch customer name from SPL website
+let browserInstance = null;
+
+async function getBrowser() {
+  if (!browserInstance) {
+    browserInstance = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    });
+  }
+  return browserInstance;
+}
+
+app.post("/api/fetch-customer-name", async (req, res) => {
+  const { type, idNumber, birthDay, birthMonth, birthYear, calendarType, unifiedNumber, establishmentNumber, laborOfficeNumber, licenseNumber } = req.body;
+  
+  console.log('Fetching customer name:', { type, idNumber, unifiedNumber, establishmentNumber });
+  
+  try {
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    if (type === 'individuals') {
+      // Navigate to individuals registration
+      await page.goto('https://accounts.splonline.com.sa/ar/Registration/ValidateNId', {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+      
+      // Fill ID number
+      await page.type('#PersonalId', idNumber);
+      
+      // Select calendar type
+      if (calendarType === 'hijri') {
+        await page.click('#radio-hijri');
+        await page.select('#Birthday_H_SelectedDay', birthDay);
+        await page.select('#Birthday_H_SelectedMonth', birthMonth);
+        await page.select('#Birthday_H_SelectedYear', birthYear);
+      } else {
+        await page.click('#radio-gregorian');
+        await page.select('#Birthday_G_SelectedDay', birthDay);
+        await page.select('#Birthday_G_SelectedMonth', birthMonth);
+        await page.select('#Birthday_G_SelectedYear', birthYear);
+      }
+      
+      // Submit form
+      await page.click('#btnValidate');
+      
+      // Wait for response
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      
+      // Try to get the name from the page
+      const customerName = await page.evaluate(() => {
+        // Look for name in various possible locations
+        const nameElement = document.querySelector('.customer-name, .user-name, [data-name], h2, h3');
+        if (nameElement) return nameElement.textContent.trim();
+        
+        // Look for greeting message
+        const greeting = document.body.innerText.match(/مرحب[اً]?\s+([^،,]+)/i);
+        if (greeting) return greeting[1].trim();
+        
+        // Look for any Arabic name pattern
+        const arabicName = document.body.innerText.match(/([\u0600-\u06FF]+\s+[\u0600-\u06FF]+\s+[\u0600-\u06FF]+)/g);
+        if (arabicName && arabicName.length > 0) return arabicName[0];
+        
+        return null;
+      });
+      
+      await page.close();
+      
+      if (customerName) {
+        res.json({ success: true, name: customerName });
+      } else {
+        res.json({ success: false, error: 'Could not find customer name' });
+      }
+      
+    } else if (type === 'business') {
+      // Navigate to business registration
+      await page.goto('https://accounts.splonline.com.sa/ar/Registration/RegisterCustomer', {
+        waitUntil: 'networkidle2',
+        timeout: 30000
+      });
+      
+      // Select business type
+      await page.click('input[value="business"], #business, [data-type="business"]').catch(() => {});
+      await page.waitForTimeout(1000);
+      
+      // Fill business number based on type
+      if (unifiedNumber) {
+        await page.type('#UnifiedNumber, input[name="UnifiedNumber"]', unifiedNumber).catch(() => {});
+      } else if (establishmentNumber) {
+        await page.type('#EstablishmentNumber, input[name="EstablishmentNumber"]', establishmentNumber).catch(() => {});
+        if (laborOfficeNumber) {
+          await page.type('#LaborOfficeNumber, input[name="LaborOfficeNumber"]', laborOfficeNumber).catch(() => {});
+        }
+        if (licenseNumber) {
+          await page.type('#LicenseNumber, input[name="LicenseNumber"]', licenseNumber).catch(() => {});
+        }
+      }
+      
+      // Submit and get name
+      await page.click('button[type="submit"], #btnValidate, .btn-primary').catch(() => {});
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(2000);
+      
+      const businessName = await page.evaluate(() => {
+        const nameElement = document.querySelector('.business-name, .company-name, [data-name], h2, h3');
+        if (nameElement) return nameElement.textContent.trim();
+        
+        const arabicName = document.body.innerText.match(/([\u0600-\u06FF]+\s+[\u0600-\u06FF]+)/g);
+        if (arabicName && arabicName.length > 0) return arabicName[0];
+        
+        return null;
+      });
+      
+      await page.close();
+      
+      if (businessName) {
+        res.json({ success: true, name: businessName });
+      } else {
+        res.json({ success: false, error: 'Could not find business name' });
+      }
+    } else {
+      res.json({ success: false, error: 'Invalid type' });
+    }
+    
+  } catch (error) {
+    console.error('Error fetching customer name:', error);
+    res.json({ success: false, error: error.message });
+  }
 });
 
 // Start server
