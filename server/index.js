@@ -22,12 +22,6 @@ app.use(express.json());
 app.use(cookieParser());
 app.use('/admin', express.static('admin'));
 
-// مؤقت - إعادة تعيين كلمة السر
-app.get('/reset-admin-password-temp', (req, res) => {
-  adminPassword = 'admin123';
-  saveData();
-  res.send('Password reset to admin123');
-});
 
 // Socket.IO Configuration
 const io = new Server(server, {
