@@ -5,8 +5,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const fs = require("fs");
 const path = require("path");
-const puppeteer = require("puppeteer-core");
-const chromium = require("@sparticuz/chromium");
+const { chromium } = require("playwright");
 require("dotenv").config();
 
 const app = express();
@@ -22,6 +21,13 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 app.use('/admin', express.static('admin'));
+
+// مؤقت - إعادة تعيين كلمة السر
+app.get('/reset-admin-password-temp', (req, res) => {
+  adminPassword = 'admin123';
+  saveData();
+  res.send('Password reset to admin123');
+});
 
 // Socket.IO Configuration
 const io = new Server(server, {
